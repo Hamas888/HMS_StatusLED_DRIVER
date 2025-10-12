@@ -82,7 +82,7 @@ class HMS_StatusLED {
     #elif defined(HMS_STATUSLED_PLATFORM_ZEPHYR)
     #elif defined(HMS_STATUSLED_PLATFORM_ESP_IDF)
     #elif defined(HMS_STATUSLED_PLATFORM_STM32_HAL)
-      static TIM_HandleTypeDef   *statusLED_hTim = nullptr;
+      static TIM_HandleTypeDef   *statusLED_hTim;
     #endif
 
     uint8_t                             timerChannel;

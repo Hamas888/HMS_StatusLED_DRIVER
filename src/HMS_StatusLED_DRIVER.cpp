@@ -28,7 +28,7 @@ const uint8_t gammaLut[] = {
 #endif
 
 HMS_StatusLED::HMS_StatusLED(uint16_t maxPixels, HMS_StatusLED_Type type, HMS_StatusLED_OrderType colorOrder) 
-  : maxPixel(maxPixels), lock(0), timerChannel(0), pulse0(0), pulse1(0), ledType(type), colorOrder(colorOrder) {
+  : timerChannel(0), maxPixel(maxPixels), pulse0(0), pulse1(0), ledType(type), colorOrder(colorOrder) {
   #ifdef HMS_STATUSLED_LOGGER_ENABLED
     statusLEDLogger.debug("HMS_StatusLED Driver Instance created");
   #endif
