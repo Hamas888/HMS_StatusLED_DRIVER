@@ -1,5 +1,4 @@
 #include "HMS_StatusLED_DRIVER.h"
-#include <algorithm>
 
 #ifdef HMS_STATUSLED_LOGGER_ENABLED
   #include "ChronoLog.h"
@@ -28,13 +27,8 @@ const uint8_t gammaLut[] = {
 
 #endif
 
-// Static member initialization for STM32 HAL
-#if defined(HMS_STATUSLED_PLATFORM_STM32_HAL)
-TIM_HandleTypeDef* HMS_StatusLED::statusLED_hTim = nullptr;
-#endif
-
 HMS_StatusLED::HMS_StatusLED(uint16_t maxPixels, HMS_StatusLED_Type type, HMS_StatusLED_OrderType colorOrder) 
-  : maxPixel(maxPixels), timerChannel(0), pulse0(0), pulse1(0), ledType(type), colorOrder(colorOrder) {
+  : maxPixel(maxPixels), lock(0), timerChannel(0), pulse0(0), pulse1(0), ledType(type), colorOrder(colorOrder) {
   #ifdef HMS_STATUSLED_LOGGER_ENABLED
     statusLEDLogger.debug("HMS_StatusLED Driver Instance created");
   #endif
