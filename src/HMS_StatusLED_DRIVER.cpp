@@ -5,6 +5,13 @@
   ChronoLoger statusLEDLogger("HMS_StatusLED", HMS_STATUSLED_DEBUG_ENABLED);
 #endif
 
+#if defined(HMS_STATUSLED_PLATFORM_ARDUINO)
+#elif defined(HMS_STATUSLED_PLATFORM_ZEPHYR)
+#elif defined(HMS_STATUSLED_PLATFORM_ESP_IDF)
+#elif defined(HMS_STATUSLED_PLATFORM_STM32_HAL)
+  TIM_HandleTypeDef* HMS_StatusLED::statusLED_hTim = nullptr;
+#endif
+
 #if (HMS_STATUSLED_GAMMA == true)
 const uint8_t gammaLut[] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
