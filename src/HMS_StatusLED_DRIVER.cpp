@@ -6,8 +6,18 @@
 #endif
 
 #if defined(HMS_STATUSLED_PLATFORM_ARDUINO)
+    #if defined(HMS_STATUSLED_PLATFORM_ARDUINO_ESP32)
+        rmtChannel = RMT_CHANNEL_0;
+        outputPin = 0;
+        rmtItems = nullptr;
+    #else
+        outputPin = 0;
+    #endif
 #elif defined(HMS_STATUSLED_PLATFORM_ZEPHYR)
 #elif defined(HMS_STATUSLED_PLATFORM_ESP_IDF)
+    rmtChannel = RMT_CHANNEL_0;
+    outputPin = 0;
+    rmtItems = nullptr;
 #elif defined(HMS_STATUSLED_PLATFORM_STM32_HAL)
   TIM_HandleTypeDef* HMS_StatusLED::statusLED_hTim = nullptr;
 #endif
@@ -40,7 +50,12 @@ HMS_StatusLED::HMS_StatusLED(uint16_t maxPixels, HMS_StatusLED_Type type, HMS_St
     statusLEDLogger.debug("HMS_StatusLED Driver Instance created");
   #endif
     if (type == HMS_STATUSLED_TYPE_WS281XX) {
-        buffer.resize((maxPixel * 24) + 50, 0);
+        #if defined(HMS_STATUSLED_PLATFORM_ARDUINO_ESP32) || defined(HMS_STATUSLED_PLATFORM_ESP_IDF)
+            // For ESP32, we'll use RMT items for efficient transmission
+            rmtItems = (rmt_item32_t*)malloc(maxPixel * 24 * sizeof(rmt_item32_t));
+        #else
+            buffer.resize((maxPixel * 24) + 50, 0);
+        #endif
         pixel.resize(maxPixel, std::vector<uint8_t>(3, 0));
     }
 }
@@ -49,11 +64,216 @@ HMS_StatusLED::~HMS_StatusLED() {
     #ifdef HMS_STATUSLED_LOGGER_ENABLED
       statusLEDLogger.debug("HMS_StatusLED Driver Instance destroyed");
     #endif
+    
+    #if defined(HMS_STATUSLED_PLATFORM_ARDUINO_ESP32) || defined(HMS_STATUSLED_PLATFORM_ESP_IDF)
+        if (rmtItems) {
+            free(rmtItems);
+            rmtItems = nullptr;
+        }
+        // Deinitialize RMT channel
+        rmt_driver_uninstall(rmtChannel);
+    #endif
 }
 
 #if defined(HMS_STATUSLED_PLATFORM_ARDUINO)
+    #if defined(HMS_STATUSLED_PLATFORM_ARDUINO_ESP32)
+HMS_StatusLED_StatusTypeDef HMS_StatusLED::begin(uint8_t pin, rmt_channel_t rmtChannel) {
+    outputPin = pin;
+    this->rmtChannel = rmtChannel;
+    
+    // Configure RMT for WS2812B timing
+    rmt_config_t rmtConfig = {};
+    rmtConfig.rmt_mode = RMT_MODE_TX;
+    rmtConfig.channel = rmtChannel;
+    rmtConfig.gpio_num = (gpio_num_t)pin;
+    rmtConfig.clk_div = 2;  // 40MHz (80MHz / 2)
+    rmtConfig.mem_block_num = 1;
+    rmtConfig.flags = 0;
+    
+    rmtConfig.tx_config.carrier_en = false;
+    rmtConfig.tx_config.loop_en = false;
+    rmtConfig.tx_config.idle_level = RMT_IDLE_LEVEL_LOW;
+    rmtConfig.tx_config.idle_output_en = true;
+    
+    // Configure RMT
+    esp_err_t result = rmt_config(&rmtConfig);
+    if (result != ESP_OK) {
+        #ifdef HMS_STATUSLED_LOGGER_ENABLED
+            statusLEDLogger.debug("Error: RMT configuration failed");
+        #endif
+        return HMS_STATUSLED_ERROR;
+    }
+    
+    // Install RMT driver
+    result = rmt_driver_install(rmtChannel, 0, 0);
+    if (result != ESP_OK) {
+        #ifdef HMS_STATUSLED_LOGGER_ENABLED
+            statusLEDLogger.debug("Error: RMT driver installation failed");
+        #endif
+        return HMS_STATUSLED_ERROR;
+    }
+    
+    // Clear pixels
+    clear();
+    
+    #ifdef HMS_STATUSLED_LOGGER_ENABLED
+        statusLEDLogger.debug("ESP32 RMT Driver Started on pin %d, channel %d", pin, rmtChannel);
+    #endif
+    
+    return HMS_STATUSLED_OK;
+}
+
+void HMS_StatusLED::updateRMTBuffer() {
+    if (!rmtItems) return;
+    
+    uint32_t itemIndex = 0;
+    
+    // Convert pixel data to RMT items
+    for (uint16_t pixelIdx = 0; pixelIdx < maxPixel; pixelIdx++) {
+        for (uint8_t colorComponent = 0; colorComponent < 3; colorComponent++) {
+            uint8_t colorValue = pixel[pixelIdx][colorComponent];
+            
+            // Convert each bit to RMT item (WS2812B timing)
+            for (int8_t bit = 7; bit >= 0; bit--) {
+                if (colorValue & (1 << bit)) {
+                    // High bit: T1H=0.8µs, T1L=0.45µs (32 ticks, 18 ticks at 40MHz)
+                    rmtItems[itemIndex].level0 = 1;
+                    rmtItems[itemIndex].duration0 = 32;  // 0.8µs
+                    rmtItems[itemIndex].level1 = 0;
+                    rmtItems[itemIndex].duration1 = 18;  // 0.45µs
+                } else {
+                    // Low bit: T0H=0.4µs, T0L=0.85µs (16 ticks, 34 ticks at 40MHz)
+                    rmtItems[itemIndex].level0 = 1;
+                    rmtItems[itemIndex].duration0 = 16;  // 0.4µs
+                    rmtItems[itemIndex].level1 = 0;
+                    rmtItems[itemIndex].duration1 = 34;  // 0.85µs
+                }
+                itemIndex++;
+            }
+        }
+    }
+}
+
+HMS_StatusLED_StatusTypeDef HMS_StatusLED::show() {
+    // Update RMT buffer with current pixel data
+    updateRMTBuffer();
+    
+    // Send data via RMT
+    esp_err_t result = rmt_write_items(rmtChannel, rmtItems, maxPixel * 24, true);
+    if (result != ESP_OK) {
+        #ifdef HMS_STATUSLED_LOGGER_ENABLED
+            statusLEDLogger.debug("Error: RMT transmission failed");
+        #endif
+        return HMS_STATUSLED_ERROR;
+    }
+    
+    #ifdef HMS_STATUSLED_LOGGER_ENABLED
+        statusLEDLogger.debug("LED data sent via RMT");
+    #endif
+    
+    return HMS_STATUSLED_OK;
+}
+    #else
+        // Other Arduino platforms (non-ESP32) implementation would go here
+    #endif
 #elif defined(HMS_STATUSLED_PLATFORM_ZEPHYR)
 #elif defined(HMS_STATUSLED_PLATFORM_ESP_IDF)
+HMS_StatusLED_StatusTypeDef HMS_StatusLED::begin(uint8_t pin, rmt_channel_t rmtChannel) {
+    outputPin = pin;
+    this->rmtChannel = rmtChannel;
+    
+    // Configure RMT for WS2812B timing
+    rmt_config_t rmtConfig = {};
+    rmtConfig.rmt_mode = RMT_MODE_TX;
+    rmtConfig.channel = rmtChannel;
+    rmtConfig.gpio_num = (gpio_num_t)pin;
+    rmtConfig.clk_div = 2;  // 40MHz (80MHz / 2)
+    rmtConfig.mem_block_num = 1;
+    rmtConfig.flags = 0;
+    
+    rmtConfig.tx_config.carrier_en = false;
+    rmtConfig.tx_config.loop_en = false;
+    rmtConfig.tx_config.idle_level = RMT_IDLE_LEVEL_LOW;
+    rmtConfig.tx_config.idle_output_en = true;
+    
+    // Configure RMT
+    esp_err_t result = rmt_config(&rmtConfig);
+    if (result != ESP_OK) {
+        #ifdef HMS_STATUSLED_LOGGER_ENABLED
+            statusLEDLogger.debug("Error: RMT configuration failed");
+        #endif
+        return HMS_STATUSLED_ERROR;
+    }
+    
+    // Install RMT driver
+    result = rmt_driver_install(rmtChannel, 0, 0);
+    if (result != ESP_OK) {
+        #ifdef HMS_STATUSLED_LOGGER_ENABLED
+            statusLEDLogger.debug("Error: RMT driver installation failed");
+        #endif
+        return HMS_STATUSLED_ERROR;
+    }
+    
+    // Clear pixels
+    clear();
+    
+    #ifdef HMS_STATUSLED_LOGGER_ENABLED
+        statusLEDLogger.debug("ESP-IDF RMT Driver Started on pin %d, channel %d", pin, rmtChannel);
+    #endif
+    
+    return HMS_STATUSLED_OK;
+}
+
+void HMS_StatusLED::updateRMTBuffer() {
+    if (!rmtItems) return;
+    
+    uint32_t itemIndex = 0;
+    
+    // Convert pixel data to RMT items
+    for (uint16_t pixelIdx = 0; pixelIdx < maxPixel; pixelIdx++) {
+        for (uint8_t colorComponent = 0; colorComponent < 3; colorComponent++) {
+            uint8_t colorValue = pixel[pixelIdx][colorComponent];
+            
+            // Convert each bit to RMT item (WS2812B timing)
+            for (int8_t bit = 7; bit >= 0; bit--) {
+                if (colorValue & (1 << bit)) {
+                    // High bit: T1H=0.8µs, T1L=0.45µs (32 ticks, 18 ticks at 40MHz)
+                    rmtItems[itemIndex].level0 = 1;
+                    rmtItems[itemIndex].duration0 = 32;  // 0.8µs
+                    rmtItems[itemIndex].level1 = 0;
+                    rmtItems[itemIndex].duration1 = 18;  // 0.45µs
+                } else {
+                    // Low bit: T0H=0.4µs, T0L=0.85µs (16 ticks, 34 ticks at 40MHz)
+                    rmtItems[itemIndex].level0 = 1;
+                    rmtItems[itemIndex].duration0 = 16;  // 0.4µs
+                    rmtItems[itemIndex].level1 = 0;
+                    rmtItems[itemIndex].duration1 = 34;  // 0.85µs
+                }
+                itemIndex++;
+            }
+        }
+    }
+}
+
+HMS_StatusLED_StatusTypeDef HMS_StatusLED::show() {
+    // Update RMT buffer with current pixel data
+    updateRMTBuffer();
+    
+    // Send data via RMT
+    esp_err_t result = rmt_write_items(rmtChannel, rmtItems, maxPixel * 24, true);
+    if (result != ESP_OK) {
+        #ifdef HMS_STATUSLED_LOGGER_ENABLED
+            statusLEDLogger.debug("Error: RMT transmission failed");
+        #endif
+        return HMS_STATUSLED_ERROR;
+    }
+    
+    #ifdef HMS_STATUSLED_LOGGER_ENABLED
+        statusLEDLogger.debug("LED data sent via RMT");
+    #endif
+    
+    return HMS_STATUSLED_OK;
+}
 #elif defined(HMS_STATUSLED_PLATFORM_STM32_HAL)
 void HMS_StatusLED::updateDMABuffer() {
     uint32_t bufferIndex = 0;
