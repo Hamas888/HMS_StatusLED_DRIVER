@@ -202,34 +202,34 @@
   ┌────────────────────────────────────────────────────────────────────────┐
   │ Usage Examples:                                                        │
   │                                                                        │
-  │ // Get hex value with 0x prefix:                                       │
+  │ => Get hex value with 0x prefix:                                       │
   │ uint16_t red565 = HMS_STATUSLED_HEX565(HMS_STATUSLED_RGB565_RED);      │
   │ uint32_t red888 = HMS_STATUSLED_HEX888(HMS_STATUSLED_RGB888_RED);      │
   │                                                                        │
-  │ // Convert RGB components to color formats:                            │
+  │ => Convert RGB components to color formats:                            │
   │ uint16_t customColor565 = HMS_STATUSLED_RGB_TO_565(128, 64, 192);      │
   │ uint32_t customColor888 = HMS_STATUSLED_RGB_TO_888(128, 64, 192);      │
   │                                                                        │
-  │ // Convert between formats:                                            │
+  │ => Convert between formats:                                            │
   │ uint32_t rgb888 = HMS_STATUSLED_565_TO_888(HMS_STATUSLED_RGB565_BLUE); │
   │ uint16_t rgb565 = HMS_STATUSLED_888_TO_565(HMS_STATUSLED_RGB888_BLUE); │
   │                                                                        │
-  │ // Extract color components:                                           │
+  │ => Extract color components:                                           │
   │ uint8_t red = HMS_STATUSLED_GET_RED_888(HMS_STATUSLED_RGB888_PURPLE);  │
   │ uint8_t green = HMS_STATUSLED_GET_GREEN_565(HMS_STATUSLED_RGB565_TEAL);│
   │                                                                        │
-  │ // SetPixelColor examples (auto-detects RGB565/RGB888):                │
+  │ => SetPixelColor examples (auto-detects RGB565/RGB888):                │
   │ led.setPixelColor(HMS_STATUSLED_RGB565_RED, 0);    // RGB565 detected  │
   │ led.setPixelColor(HMS_STATUSLED_RGB888_BLUE, 1);   // RGB888 detected  │
   │ led.setPixelColor(0xFF00FF, 2);                    // RGB888 magenta   │
   │ led.setPixelColor(0xF81F, 3);                      // RGB565 magenta   │
   │                                                                        │
-  │ // SetPixelColor with specific color order:                            │
+  │ => SetPixelColor with specific color order:                            │
   │ led.setPixelColor(0xFF0000, 0, HMS_STATUSLED_ORDER_RGB); // Red as RGB │
   │ led.setPixelColor(0xFF0000, 1, HMS_STATUSLED_ORDER_BGR); // Red as BGR │
   │ led.setPixelColor(0xFF0000, 2, HMS_STATUSLED_ORDER_GRB); // Red as GRB │
   │                                                                        │
-  │ // Change default color order:                                         │
+  │ => Change default color order:                                         │
   │ led.setColorOrder(HMS_STATUSLED_ORDER_GRB);  // Common for WS2812B     │
   └────────────────────────────────────────────────────────────────────────┘
 */
