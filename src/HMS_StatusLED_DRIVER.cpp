@@ -38,7 +38,7 @@ HMS_StatusLED::HMS_StatusLED(uint16_t maxPixels, HMS_StatusLED_Type type, HMS_St
   #endif
     if (type == HMS_STATUSLED_TYPE_WS281XX) {
         #if defined(HMS_STATUSLED_PLATFORM_ARDUINO_ESP32) || defined(HMS_STATUSLED_PLATFORM_ESP_IDF)
-            rmtItems = (rmt_item32_t*)malloc(maxPixel * 24 * sizeof(rmt_item32_t));                                 // For ESP32, we'll use RMT items for efficient transmission
+            rmtItems = (rmt_item32_t*)malloc((maxPixel * 24 + 1) * sizeof(rmt_item32_t));                           // For ESP32, we'll use RMT items for efficient transmission (+1 for reset pulse)
         #else
             buffer.resize((maxPixel * 24) + 50, 0);                                                                 // For STM32 HAL, we'll use a buffer for DMA transmission
         #endif
@@ -136,12 +136,22 @@ void HMS_StatusLED::updateRMTBuffer() {
             }
         }
     }
+    
+    /*
+        Add reset pulse (>50µs low) - WS2812B needs this to latch data properly
+        At 40MHz, 50µs = 2000 ticks, but RMT max duration is 32767 ticks
+        So we'll add reset pulse to achieve >50µs total
+    */
+    rmtItems[itemIndex].level0 = 0;
+    rmtItems[itemIndex].duration0 = 2000;                                                                           // 50µs low
+    rmtItems[itemIndex].level1 = 0;
+    rmtItems[itemIndex].duration1 = 0;
 }
 
 HMS_StatusLED_StatusTypeDef HMS_StatusLED::show() {
     updateRMTBuffer();                                                                                              // Update RMT buffer with current pixel data
     
-    esp_err_t result = rmt_write_items(rmtChannel, rmtItems, maxPixel * 24, true);                                  // Send data via RMT
+    esp_err_t result = rmt_write_items(rmtChannel, rmtItems, maxPixel * 24 + 1, true);                            // Send data via RMT (+1 for reset pulse)
     if (result != ESP_OK) {
         #ifdef HMS_STATUSLED_LOGGER_ENABLED
             statusLEDLogger.debug("Error: RMT transmission failed");
@@ -345,6 +355,9 @@ void HMS_StatusLED::setColorOrder(HMS_StatusLED_OrderType order) {
 
 void HMS_StatusLED::clear() {
     for (auto& pixelData : pixel) {                                                                                // Clear all pixel data
+        std::fill(pixelData.begin(), pixelData.end(), 0);
+    }
+    for (auto& pixelData : originalPixel) {                                                                        // Clear original pixel data too
         std::fill(pixelData.begin(), pixelData.end(), 0);
     }
     
