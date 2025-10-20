@@ -10,6 +10,9 @@ A versatile LED strip driver library for STM32, Arduino, ESP32, and Zephyr platf
 - ✅ **Multi-Platform**: STM32 HAL, Arduino, ESP-IDF, Zephyr support
 - ✅ **DMA Support**: Efficient DMA-based transmission on STM32
 - ✅ **Comprehensive Color Library**: 565 and 888 format color definitions
+- ✅ **Power Control**: Turn LEDs on/off while preserving state
+- ✅ **Brightness Control**: Global brightness adjustment (0-255)
+- ✅ **State Memory**: Automatic state saving/restoration
 
 ## Quick Start (STM32)
 
@@ -71,6 +74,34 @@ led.clear();
 led.show();
 ```
 
+### 4. Power Control & Brightness
+
+```cpp
+// Set brightness (0-255, default is 255)
+led.setBrightness(128);  // 50% brightness
+led.show();              // Apply brightness to current display
+
+// Turn off LEDs (saves current state)
+led.turnOff();
+led.show();              // LEDs go dark
+
+// Turn on LEDs (restores previous state)
+led.turnOn();
+led.show();              // LEDs restore with saved colors
+
+// Brightness can be changed while on or off
+led.setBrightness(64);   // 25% brightness
+led.turnOn();            // Restore state with new brightness
+led.show();
+
+// Create breathing effect
+for (int b = 0; b <= 255; b += 5) {
+    led.setBrightness(b);
+    led.show();
+    HAL_Delay(50);
+}
+```
+
 ## Color Format Detection
 
 The library automatically detects color format based on value range:
@@ -117,6 +148,13 @@ HMS_StatusLED_StatusTypeDef setPixelColor(uint32_t color, uint16_t pixelIndex, H
 HMS_StatusLED_StatusTypeDef show();
 void clear();
 void setColorOrder(HMS_StatusLED_OrderType order);
+```
+
+### Power Control & Brightness
+```cpp
+void turnOff();                    // Turn off LEDs, save current state
+void turnOn();                     // Restore previously saved state  
+void setBrightness(uint8_t level); // Set global brightness (0-255)
 ```
 
 ## Predefined Colors

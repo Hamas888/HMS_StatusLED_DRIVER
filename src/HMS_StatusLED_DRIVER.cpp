@@ -32,7 +32,7 @@ const uint8_t gammaLut[] = {
 #endif
 
 HMS_StatusLED::HMS_StatusLED(uint16_t maxPixels, HMS_StatusLED_Type type, HMS_StatusLED_OrderType colorOrder) 
-  : maxPixel(maxPixels), ledType(type), colorOrder(colorOrder) {
+  : maxPixel(maxPixels), ledType(type), colorOrder(colorOrder), brightness(255), isOn(true) {
   #ifdef HMS_STATUSLED_LOGGER_ENABLED
     statusLEDLogger.debug("HMS_StatusLED Driver Instance created");
   #endif
@@ -43,6 +43,8 @@ HMS_StatusLED::HMS_StatusLED(uint16_t maxPixels, HMS_StatusLED_Type type, HMS_St
             buffer.resize((maxPixel * 24) + 50, 0);                                                                 // For STM32 HAL, we'll use a buffer for DMA transmission
         #endif
         pixel.resize(maxPixel, std::vector<uint8_t>(3, 0));
+        originalPixel.resize(maxPixel, std::vector<uint8_t>(3, 0));                                                 // Initialize original pixel storage
+        lastState.resize(maxPixel, std::vector<uint8_t>(3, 0));                                                     // Initialize lastState storage
     }
 }
 
@@ -61,9 +63,11 @@ HMS_StatusLED::~HMS_StatusLED() {
         buffer.clear();
     #endif
     pixel.clear();
+    originalPixel.clear();
+    lastState.clear();
 }
 
-#if defined(HMS_STATUSLED_PLATFORM_ARDUINO)
+#if defined(HMS_STATUSLED_PLATFORM_ARDUINO) && !defined(HMS_STATUSLED_PLATFORM_ARDUINO_ESP32)
 #elif defined(HMS_STATUSLED_PLATFORM_ARDUINO_ESP32) || defined(HMS_STATUSLED_PLATFORM_ESP_IDF)
 HMS_StatusLED_StatusTypeDef HMS_StatusLED::begin(uint8_t pin, rmt_channel_t channel) {
     outputPin = pin;
@@ -151,30 +155,29 @@ HMS_StatusLED_StatusTypeDef HMS_StatusLED::show() {
     
     return HMS_STATUSLED_OK;
 }
+
+
 #elif defined(HMS_STATUSLED_PLATFORM_ZEPHYR)
 #elif defined(HMS_STATUSLED_PLATFORM_STM32_HAL)
 void HMS_StatusLED::updateDMABuffer() {
     uint32_t bufferIndex = 0;
     
-    // Convert pixel data to PWM duty cycles for DMA
-    for (uint16_t i = 0; i < maxPixel; i++) {
+    for (uint16_t i = 0; i < maxPixel; i++) {                                                                       // Convert pixel data to PWM duty cycles for DMA
         for (uint8_t colorComponent = 0; colorComponent < 3; colorComponent++) {
             uint8_t colorValue = pixel[i][colorComponent];
-            
-            // Convert each bit of the color value to PWM duty cycle
-            for (int8_t bit = 7; bit >= 0; bit--) {
+
+            for (int8_t bit = 7; bit >= 0; bit--) {                                                                 // Convert each bit of the color value to PWM duty cycle
                 if (colorValue & (1 << bit)) {
-                    buffer[bufferIndex] = pulse1;  // High bit (T1H)
+                    buffer[bufferIndex] = pulse1;                                                                   // High bit (T1H)
                 } else {
-                    buffer[bufferIndex] = pulse0;  // Low bit (T0H)
+                    buffer[bufferIndex] = pulse0;                                                                   // Low bit (T0H)
                 }
                 bufferIndex++;
             }
         }
     }
     
-    // Add reset pulse (50µs of low) - WS2812B needs >50µs reset time
-    for (uint16_t i = 0; i < 50; i++) {
+    for (uint16_t i = 0; i < 50; i++) {                                                                             // Add reset pulse (50µs of low) - WS2812B needs >50µs reset time
         if (bufferIndex < buffer.size()) {
             buffer[bufferIndex++] = 0;
         }
@@ -189,11 +192,9 @@ HMS_StatusLED_StatusTypeDef HMS_StatusLED::show() {
         return HMS_STATUSLED_ERROR;
     }
     
-    // Update DMA buffer with current pixel data
-    updateDMABuffer();
+    updateDMABuffer();                                                                                              // Update DMA buffer with current pixel data
     
-    // Start DMA transfer
-    HAL_StatusTypeDef halStatus = HAL_TIM_PWM_Start_DMA(
+    HAL_StatusTypeDef halStatus = HAL_TIM_PWM_Start_DMA(                                                            // Start DMA transfer
         statusLED_hTim, 
         timerChannel, 
         (uint32_t*)buffer.data(), 
@@ -222,8 +223,7 @@ HMS_StatusLED_StatusTypeDef HMS_StatusLED::begin(TIM_HandleTypeDef *hTim, uint16
         return HMS_STATUSLED_ERROR;
     }
 
-    // Validate channel (STM32 HAL uses TIM_CHANNEL_x constants)
-    if(channel != TIM_CHANNEL_1 && channel != TIM_CHANNEL_2 && 
+    if(channel != TIM_CHANNEL_1 && channel != TIM_CHANNEL_2 &&                                                      // Validate channel (STM32 HAL uses TIM_CHANNEL_x constants)
        channel != TIM_CHANNEL_3 && channel != TIM_CHANNEL_4) {
         #ifdef HMS_STATUSLED_LOGGER_ENABLED
           statusLEDLogger.debug("Error: Invalid Timer Channel");
@@ -234,27 +234,21 @@ HMS_StatusLED_StatusTypeDef HMS_StatusLED::begin(TIM_HandleTypeDef *hTim, uint16
     statusLED_hTim = hTim;
     timerChannel = channel;
 
-    // Calculate timer values based on frequency and WS2812B timing requirements
-    // WS2812B timing: T0H=0.4µs, T0L=0.85µs, T1H=0.8µs, T1L=0.45µs, Period=1.25µs
-    float timerFrequencyMHz = (float)timerBusFrequencyMHz;
-    autoReloadValue = (uint32_t)((timerFrequencyMHz * HMS_STATUSLED_PULSE_LENGTH_NS) / 1000.0f) - 1;
+    float timerFrequencyMHz = (float)timerBusFrequencyMHz;                                                          // Calculate timer values based on frequency and WS2812B timing requirements
+    autoReloadValue = (uint32_t)((timerFrequencyMHz * HMS_STATUSLED_PULSE_LENGTH_NS) / 1000.0f) - 1;                // WS2812B timing: T0H=0.4µs, T0L=0.85µs, T1H=0.8µs, T1L=0.45µs, Period=1.25µs
     
-    // Calculate pulse widths
-    pulse0 = (uint16_t)((timerFrequencyMHz * HMS_STATUSLED_PULSE_0_NS) / 1000.0f);
+    pulse0 = (uint16_t)((timerFrequencyMHz * HMS_STATUSLED_PULSE_0_NS) / 1000.0f);                                  // Calculate pulse widths
     pulse1 = (uint16_t)((timerFrequencyMHz * HMS_STATUSLED_PULSE_1_NS) / 1000.0f);
 
-    // Configure timer
-    __HAL_TIM_SET_AUTORELOAD(hTim, autoReloadValue);
+    __HAL_TIM_SET_AUTORELOAD(hTim, autoReloadValue);                                                                // Configure timer
     __HAL_TIM_SET_PRESCALER(hTim, 0);
 
-    // Clear buffers
-    std::fill(buffer.begin(), buffer.end(), 0);
+    std::fill(buffer.begin(), buffer.end(), 0);                                                                     // Clear buffers
     for(auto& pixelData : pixel) {
         std::fill(pixelData.begin(), pixelData.end(), 0);
     }
 
-    // Initialize DMA buffer with reset values (low for reset pulse)
-    updateDMABuffer();
+    updateDMABuffer();                                                                                              // Initialize DMA buffer with reset values (low for reset pulse)
 
     #ifdef HMS_STATUSLED_LOGGER_ENABLED
       statusLEDLogger.debug("Timer configured: ARR=%lu, Pulse0=%d, Pulse1=%d", autoReloadValue, pulse0, pulse1);
@@ -270,21 +264,16 @@ HMS_StatusLED_StatusTypeDef HMS_StatusLED::setPixelColor(uint32_t color, uint16_
 }
 
 HMS_StatusLED_StatusTypeDef HMS_StatusLED::setPixelColor(uint32_t color, uint16_t pixelIndex, HMS_StatusLED_OrderType colorOrder) {
-    // Validate pixel index
-    if (pixelIndex >= maxPixel) {
+    if (pixelIndex >= maxPixel) {                                                                                   // Validate pixel index
         #ifdef HMS_STATUSLED_LOGGER_ENABLED
           statusLEDLogger.debug("Error: Pixel index out of range");
         #endif
         return HMS_STATUSLED_ERROR;
     }
 
-    uint8_t r, g, b;
-    
-    // Auto-detect color format based on value range
-    // RGB565: max value is 0xFFFF (65535)
-    // RGB888: max value is 0xFFFFFF (16777215)
-    if (color <= 0xFFFF) {
-        // Detected RGB565 format
+    uint8_t r, g, b;                                                                                                // Auto-detect color format based on value range
+
+    if (color <= 0xFFFF) {                                                                                          // Detected format RGB565: max value is 0xFFFF (65535)    
         r = HMS_STATUSLED_GET_RED_565(color);
         g = HMS_STATUSLED_GET_GREEN_565(color);
         b = HMS_STATUSLED_GET_BLUE_565(color);
@@ -292,8 +281,7 @@ HMS_StatusLED_StatusTypeDef HMS_StatusLED::setPixelColor(uint32_t color, uint16_
         #ifdef HMS_STATUSLED_LOGGER_ENABLED
           statusLEDLogger.debug("RGB565 color detected");
         #endif
-    } else {
-        // Detected RGB888 format
+    } else {                                                                                                        // Detected format RGB888: max value is 0xFFFFFF (16777215)
         r = HMS_STATUSLED_GET_RED_888(color);
         g = HMS_STATUSLED_GET_GREEN_888(color);
         b = HMS_STATUSLED_GET_BLUE_888(color);
@@ -302,40 +290,40 @@ HMS_StatusLED_StatusTypeDef HMS_StatusLED::setPixelColor(uint32_t color, uint16_
           statusLEDLogger.debug("RGB888 color detected");
         #endif
     }
-
-    // Apply gamma correction if enabled
-    #if (HMS_STATUSLED_GAMMA == true)
-        r = gammaLut[r];
-        g = gammaLut[g];
-        b = gammaLut[b];
+    
+    #if (HMS_STATUSLED_GAMMA == true)                                                                               // Apply gamma correction if enabled
+        r = gammaLut[r];    g = gammaLut[g];    b = gammaLut[b];
     #endif
 
-    // Load pixel vector according to selected color order
+    // Store original colors (before brightness scaling)
+    uint8_t originalR = r, originalG = g, originalB = b;
+
+    // Apply brightness scaling (0-255)
+    r = (r * brightness) / 255;
+    g = (g * brightness) / 255;
+    b = (b * brightness) / 255;
+
+    // Store original values for brightness changes later
     switch (colorOrder) {
         case HMS_STATUSLED_ORDER_RGB:
-            pixel[pixelIndex][0] = r;
-            pixel[pixelIndex][1] = g;
-            pixel[pixelIndex][2] = b;
-            break;
-            
+            originalPixel[pixelIndex][0] = originalR;   originalPixel[pixelIndex][1] = originalG;   originalPixel[pixelIndex][2] = originalB;   break;  
         case HMS_STATUSLED_ORDER_BGR:
-            pixel[pixelIndex][0] = b;
-            pixel[pixelIndex][1] = g;
-            pixel[pixelIndex][2] = r;
-            break;
-            
+            originalPixel[pixelIndex][0] = originalB;   originalPixel[pixelIndex][1] = originalG;   originalPixel[pixelIndex][2] = originalR;   break;    
         case HMS_STATUSLED_ORDER_GRB:
-            pixel[pixelIndex][0] = g;
-            pixel[pixelIndex][1] = r;
-            pixel[pixelIndex][2] = b;
-            break;
-            
+            originalPixel[pixelIndex][0] = originalG;   originalPixel[pixelIndex][1] = originalR;   originalPixel[pixelIndex][2] = originalB;   break;    
         default:
-            // Default to RGB order
-            pixel[pixelIndex][0] = r;
-            pixel[pixelIndex][1] = g;
-            pixel[pixelIndex][2] = b;
-            break;
+            originalPixel[pixelIndex][0] = originalR;   originalPixel[pixelIndex][1] = originalG;   originalPixel[pixelIndex][2] = originalB;   break;
+    }
+
+    switch (colorOrder) {                                                                                           // Load pixel vector according to selected color order
+        case HMS_STATUSLED_ORDER_RGB:
+            pixel[pixelIndex][0] = r;   pixel[pixelIndex][1] = g;   pixel[pixelIndex][2] = b;   break;  
+        case HMS_STATUSLED_ORDER_BGR:
+            pixel[pixelIndex][0] = b;   pixel[pixelIndex][1] = g;   pixel[pixelIndex][2] = r;   break;    
+        case HMS_STATUSLED_ORDER_GRB:
+            pixel[pixelIndex][0] = g;   pixel[pixelIndex][1] = r;   pixel[pixelIndex][2] = b;   break;    
+        default:
+            pixel[pixelIndex][0] = r;   pixel[pixelIndex][1] = g;   pixel[pixelIndex][2] = b;   break;              // Default to RGB order
     }
 
     #ifdef HMS_STATUSLED_LOGGER_ENABLED
@@ -356,12 +344,75 @@ void HMS_StatusLED::setColorOrder(HMS_StatusLED_OrderType order) {
 }
 
 void HMS_StatusLED::clear() {
-    // Clear all pixel data
-    for (auto& pixelData : pixel) {
+    for (auto& pixelData : pixel) {                                                                                // Clear all pixel data
         std::fill(pixelData.begin(), pixelData.end(), 0);
     }
     
     #ifdef HMS_STATUSLED_LOGGER_ENABLED
       statusLEDLogger.debug("All pixels cleared");
     #endif
+}
+
+void HMS_StatusLED::turnOff() {
+    if (isOn) {
+        // Save current original state before turning off
+        for (uint16_t i = 0; i < maxPixel; i++) {
+            for (uint8_t j = 0; j < 3; j++) {
+                lastState[i][j] = originalPixel[i][j];
+            }
+        }
+        
+        // Clear all pixels (both display and original)
+        clear();
+        for (auto& pixelData : originalPixel) {
+            std::fill(pixelData.begin(), pixelData.end(), 0);
+        }
+        
+        isOn = false;
+        
+        #ifdef HMS_STATUSLED_LOGGER_ENABLED
+          statusLEDLogger.debug("LEDs turned off, state saved");
+        #endif
+    }
+}
+
+void HMS_StatusLED::turnOn() {
+    if (!isOn) {
+        // Restore last saved state to original pixels
+        for (uint16_t i = 0; i < maxPixel; i++) {
+            for (uint8_t j = 0; j < 3; j++) {
+                originalPixel[i][j] = lastState[i][j];
+            }
+        }
+        
+        // Apply current brightness to restored state
+        applyBrightnessToAllPixels();
+        
+        isOn = true;
+        
+        #ifdef HMS_STATUSLED_LOGGER_ENABLED
+          statusLEDLogger.debug("LEDs turned on, state restored");
+        #endif
+    }
+}
+
+void HMS_StatusLED::setBrightness(uint8_t newBrightness) {
+    brightness = newBrightness;
+    
+    #ifdef HMS_STATUSLED_LOGGER_ENABLED
+      char logMessage[50];
+      sprintf(logMessage, "Brightness set to: %d", brightness);
+      statusLEDLogger.debug(logMessage);
+    #endif
+    
+    // Apply new brightness to all pixels using stored original values
+    applyBrightnessToAllPixels();
+}
+
+void HMS_StatusLED::applyBrightnessToAllPixels() {
+    for (uint16_t i = 0; i < maxPixel; i++) {
+        for (uint8_t j = 0; j < 3; j++) {
+            pixel[i][j] = (originalPixel[i][j] * brightness) / 255;
+        }
+    }
 }

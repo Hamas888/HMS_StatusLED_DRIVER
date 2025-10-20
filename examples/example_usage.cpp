@@ -4,6 +4,12 @@
  * 
  * This example shows how to use the HMS StatusLED Driver with STM32 HAL
  * Make sure to configure your timer for PWM DMA output in STM32CubeMX
+ * 
+ * NEW FEATURES DEMONSTRATED:
+ * - turnOff(): Saves current LED state and turns off all LEDs
+ * - turnOn():  Restores the previously saved LED state  
+ * - setBrightness(0-255): Controls overall brightness of all LEDs
+ * - Brightness control preserves original colors and can be changed anytime
  ====================================================================================================
  */
 
@@ -52,6 +58,32 @@ void statusLED_example() {
     
     HAL_Delay(1000);
     
+    // Demonstrate brightness control
+    led.setBrightness(255);  // Full brightness
+    led.show();
+    HAL_Delay(500);
+    
+    led.setBrightness(128);  // Half brightness
+    led.show();
+    HAL_Delay(500);
+    
+    led.setBrightness(64);   // Quarter brightness
+    led.show();
+    HAL_Delay(500);
+    
+    led.setBrightness(255);  // Back to full brightness
+    led.show();
+    HAL_Delay(500);
+    
+    // Demonstrate turn off/on functionality
+    led.turnOff();           // Turn off LEDs but save current state
+    led.show();              // Apply the off state
+    HAL_Delay(1000);
+    
+    led.turnOn();            // Restore previous state
+    led.show();              // Apply the restored state
+    HAL_Delay(1000);
+    
     // Rainbow effect example
     for (uint16_t i = 0; i < 60; i++) {
         uint8_t hue = (i * 255) / 60;  // Calculate hue for rainbow
@@ -61,6 +93,19 @@ void statusLED_example() {
     led.show();
     
     HAL_Delay(2000);
+    
+    // Demonstrate breathing effect with brightness
+    for (int brightness = 255; brightness >= 0; brightness -= 5) {
+        led.setBrightness(brightness);
+        led.show();
+        HAL_Delay(50);
+    }
+    
+    for (int brightness = 0; brightness <= 255; brightness += 5) {
+        led.setBrightness(brightness);
+        led.show();
+        HAL_Delay(50);
+    }
     
     // Clear and turn off
     led.clear();
