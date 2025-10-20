@@ -95,21 +95,21 @@ class HMS_StatusLED {
   private:
     #if defined(HMS_STATUSLED_PLATFORM_ARDUINO)
       #if defined(HMS_STATUSLED_PLATFORM_ARDUINO_ESP32) || defined(HMS_STATUSLED_PLATFORM_ESP_IDF)
-        rmt_channel_t                       rmtChannel;
-        uint8_t                             outputPin;
-        rmt_item32_t*                       rmtItems;
+        rmt_channel_t                   rmtChannel;
+        uint8_t                         outputPin;
+        rmt_item32_t*                   rmtItems;
       #else
-        uint8_t                             outputPin;
+        uint8_t                         outputPin;
       #endif
     #elif defined(HMS_STATUSLED_PLATFORM_ZEPHYR)
     #elif defined(HMS_STATUSLED_PLATFORM_STM32_HAL)
-      uint8_t                    timerChannel;
-      uint32_t                            autoReloadValue;
-      static TIM_HandleTypeDef   *statusLED_hTim;
+      uint8_t                           timerChannel         = 0;
+      uint32_t                          autoReloadValue      = 0;
+      static TIM_HandleTypeDef          *statusLED_hTim;
     #endif
 
-    uint16_t                            pulse0;
-    uint16_t                            pulse1;
+    uint16_t                            pulse0              = 0;
+    uint16_t                            pulse1              = 0;
     uint16_t                            maxPixel;
     HMS_StatusLED_Type                  ledType;
     HMS_StatusLED_OrderType             colorOrder;
