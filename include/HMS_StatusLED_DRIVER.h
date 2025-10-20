@@ -94,7 +94,7 @@ class HMS_StatusLED {
 
   private:
     #if defined(HMS_STATUSLED_PLATFORM_ARDUINO)
-      #if defined(HMS_STATUSLED_PLATFORM_ARDUINO_ESP32)
+      #if defined(HMS_STATUSLED_PLATFORM_ARDUINO_ESP32) || defined(HMS_STATUSLED_PLATFORM_ESP_IDF)
         rmt_channel_t                       rmtChannel;
         uint8_t                             outputPin;
         rmt_item32_t*                       rmtItems;
@@ -102,28 +102,24 @@ class HMS_StatusLED {
         uint8_t                             outputPin;
       #endif
     #elif defined(HMS_STATUSLED_PLATFORM_ZEPHYR)
-    #elif defined(HMS_STATUSLED_PLATFORM_ESP_IDF)
-        rmt_channel_t                       rmtChannel;
-        uint8_t                             outputPin;
-        rmt_item32_t*                       rmtItems;
     #elif defined(HMS_STATUSLED_PLATFORM_STM32_HAL)
+      uint8_t                    timerChannel;
+      uint32_t                            autoReloadValue;
       static TIM_HandleTypeDef   *statusLED_hTim;
     #endif
 
-    uint8_t                             timerChannel;
     uint16_t                            pulse0;
     uint16_t                            pulse1;
     uint16_t                            maxPixel;
-    uint32_t                            autoReloadValue;
     HMS_StatusLED_Type                  ledType;
     HMS_StatusLED_OrderType             colorOrder;
     std::vector<uint8_t>                buffer;
     std::vector<std::vector<uint8_t>>   pixel;
 
     #if defined(HMS_STATUSLED_PLATFORM_ARDUINO_ESP32) || defined(HMS_STATUSLED_PLATFORM_ESP_IDF)
-        void updateRMTBuffer();                         // Convert pixel data to RMT format
+      void updateRMTBuffer();                                                                                                     // Convert pixel data to RMT format
     #elif defined(HMS_STATUSLED_PLATFORM_STM32_HAL)
-        void updateDMABuffer();                         // Convert pixel data to DMA buffer format
+      void updateDMABuffer();                                                                                                     // Convert pixel data to DMA buffer format
     #endif
 };
 
